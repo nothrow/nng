@@ -9,8 +9,8 @@
 #
 
 if (NNG_SUPP_SHA1)
-        set(SHA1_SOURCES
-                supplemental/sha1/sha1.c
-                supplemental/sha1/sha1.h)
+    set(SHA1_SOURCES
+        supplemental/sha1/sha1.c
+        supplemental/sha1/sha1.h)
 endif()
 set(NNG_SOURCES ${NNG_SOURCES} ${SHA1_SOURCES} PARENT_SCOPE)

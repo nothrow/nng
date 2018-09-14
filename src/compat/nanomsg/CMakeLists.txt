@@ -10,16 +10,16 @@
 
 set(COMPAT_SOURCES compat/nanomsg/nn.c)
 set(COMPAT_HEADERS compat/nanomsg/nn.h
-        compat/nanomsg/bus.h
-        compat/nanomsg/inproc.h
-        compat/nanomsg/ipc.h
-        compat/nanomsg/pair.h
-        compat/nanomsg/pipeline.h
-        compat/nanomsg/pubsub.h
-        compat/nanomsg/reqrep.h
-        compat/nanomsg/survey.h
-        compat/nanomsg/tcp.h
-        compat/nanomsg/ws.h
+    compat/nanomsg/bus.h
+    compat/nanomsg/inproc.h
+    compat/nanomsg/ipc.h
+    compat/nanomsg/pair.h
+    compat/nanomsg/pipeline.h
+    compat/nanomsg/pubsub.h
+    compat/nanomsg/reqrep.h
+    compat/nanomsg/survey.h
+    compat/nanomsg/tcp.h
+    compat/nanomsg/ws.h
 )
 
 set(NNG_SOURCES ${NNG_SOURCES} ${COMPAT_SOURCES} PARENT_SCOPE)

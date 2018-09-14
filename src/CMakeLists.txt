@@ -224,18 +224,18 @@ else()
 endif()
 
 set_target_properties (${PROJECT_NAME}
-	PROPERTIES SOVERSION ${NNG_ABI_SOVERSION} VERSION "${NNG_ABI_VERSION}")
+    PROPERTIES SOVERSION ${NNG_ABI_SOVERSION} VERSION "${NNG_ABI_VERSION}")
 
 # Set library outputs same as top-level project binary outputs
 set_target_properties (${PROJECT_NAME}
-	PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set_target_properties (${PROJECT_NAME}
-	PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+    PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set_target_properties (${PROJECT_NAME}
-	PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+    PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 
 set_target_properties (${PROJECT_NAME} ${PROJECT_NAME}
-	PROPERTIES FRAMEWORK OFF)
+    PROPERTIES FRAMEWORK OFF)
 
 target_link_libraries (${PROJECT_NAME} PRIVATE ${NNG_REQUIRED_LIBRARIES})
 target_link_libraries (${PROJECT_NAME} PRIVATE Threads::Threads)
@@ -257,10 +257,10 @@ install (EXPORT ${PROJECT_NAME}-target
 # Install the header files.  It would be much better if we could use
 # the PUBLIC_HEADER facility, but it stupidly flattens the directories.
 foreach (f ${NNG_HEADERS})
-	get_filename_component(d ${f} DIRECTORY)
-	install(FILES ${f}
-		DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nng/${d}
-		COMPONENT headers)
+    get_filename_component(d ${f} DIRECTORY)
+    install(FILES ${f}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nng/${d}
+        COMPONENT headers)
 endforeach()
 
 # Promote settings to parent

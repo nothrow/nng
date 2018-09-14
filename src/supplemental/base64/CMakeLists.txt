@@ -9,8 +9,8 @@
 #
 
 if (NNG_SUPP_BASE64)
-        set(BASE64_SOURCES
-                supplemental/base64/base64.c
-                supplemental/base64/base64.h)
+    set(BASE64_SOURCES
+        supplemental/base64/base64.c
+        supplemental/base64/base64.h)
 endif()
 set(NNG_SOURCES ${NNG_SOURCES} ${BASE64_SOURCES} PARENT_SCOPE)

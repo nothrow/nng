@@ -9,24 +9,24 @@
 #
 
 if (NNG_SUPP_HTTP)
-        set(HTTP_DEFINES -DNNG_SUPP_HTTP)
-        set(HTTP_HEADERS
-                supplemental/http/http.h)
-        set(HTTP_SOURCES
-                supplemental/http/http.h
-                supplemental/http/http_api.h
-                supplemental/http/http_client.c
-                supplemental/http/http_conn.c
-                supplemental/http/http_msg.c
-                supplemental/http/http_public.c
-                supplemental/http/http_server.c)
+    set(HTTP_DEFINES -DNNG_SUPP_HTTP)
+    set(HTTP_HEADERS
+        supplemental/http/http.h)
+    set(HTTP_SOURCES
+        supplemental/http/http.h
+        supplemental/http/http_api.h
+        supplemental/http/http_client.c
+        supplemental/http/http_conn.c
+        supplemental/http/http_msg.c
+        supplemental/http/http_public.c
+        supplemental/http/http_server.c)
 else()
-        set(HTTP_SOURCES
-                supplemental/http/http.h
-                supplemental/http/http_api.h
-                supplemental/http/http_public.c)
-        set(HTTP_HEADERS
-                supplemental/http/http.h)
+    set(HTTP_SOURCES
+        supplemental/http/http.h
+        supplemental/http/http_api.h
+        supplemental/http/http_public.c)
+    set(HTTP_HEADERS
+        supplemental/http/http.h)
 endif()
 
 set(NNG_DEFINES ${NNG_DEFINES} ${HTTP_DEFINES} PARENT_SCOPE)

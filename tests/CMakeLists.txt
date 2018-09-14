@@ -69,7 +69,7 @@ if (NNG_TESTS)
             add_executable (${NAME} ${NAME}.c compat_testutil.c)
             target_link_libraries (${NAME} ${PROJECT_NAME})
             target_include_directories(${NAME} PUBLIC
-		${PROJECT_SOURCE_DIR}/src/compat)
+            ${PROJECT_SOURCE_DIR}/src/compat)
 
             add_test (NAME ${NAME} COMMAND ${NAME} ${NNG_TEST_PORT})
             set_tests_properties (${NAME} PROPERTIES TIMEOUT ${TIMEOUT})

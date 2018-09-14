@@ -9,8 +9,8 @@
 #
 
 if (NNG_SUPP_WEBSOCKET)
-        set(WEBSOCKET_SOURCES
-                supplemental/websocket/websocket.c
-                supplemental/websocket/websocket.h)
+    set(WEBSOCKET_SOURCES
+        supplemental/websocket/websocket.c
+        supplemental/websocket/websocket.h)
 endif()
 set(NNG_SOURCES ${NNG_SOURCES} ${WEBSOCKET_SOURCES} PARENT_SCOPE)

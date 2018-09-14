@@ -256,7 +256,7 @@ endif()
 #  Platform checks.
 
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-	set(NNG_WARN_FLAGS "-Wall -Wextra -fno-omit-frame-pointer")
+    set(NNG_WARN_FLAGS "-Wall -Wextra -fno-omit-frame-pointer")
 elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
     set(NNG_WARN_FLAGS "-Wall -Wextra -fno-omit-frame-pointer")
 elseif (CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
@@ -274,11 +274,11 @@ if (NNG_ENABLE_COVERAGE)
     # is older than that, you will need to find something newer.  For
     # correct reporting, we always turn off all optimizations.
     if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-	    set(NNG_COVERAGE_FLAGS "-g -O0 --coverage")
+        set(NNG_COVERAGE_FLAGS "-g -O0 --coverage")
     elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    	set(NNG_COVERAGE_FLAGS "-g -O0 -fprofile-arcs -ftest-coverage")
+        set(NNG_COVERAGE_FLAGS "-g -O0 -fprofile-arcs -ftest-coverage")
     elseif (CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
-    	set(NNG_COVERAGE_FLAGS "-g -O0 -fprofile-arcs -ftest-coverage")
+        set(NNG_COVERAGE_FLAGS "-g -O0 -fprofile-arcs -ftest-coverage")
     else()
         message(FATAL_ERROR "Unable to enable coverage for your compiler.")
     endif()
@@ -420,11 +420,11 @@ if (WIN32)
     nng_check_sym (snprintf stdio.h NNG_HAVE_SNPRINTF)
     if (NOT NNG_HAVE_CONDVAR OR NOT NNG_HAVE_SNPRINTF)
         message (FATAL_ERROR
-	    "Modern Windows API support is missing. "
-	    "Versions of Windows prior to Vista are not supported.  "
-	    "Further, the 32-bit MinGW environment is not supported. "
-	    "Ensure you have at least Windows Vista or newer, and are "
-	    "using either Visual Studio 2013 or newer or MinGW-W64.")
+        "Modern Windows API support is missing. "
+        "Versions of Windows prior to Vista are not supported.  "
+        "Further, the 32-bit MinGW environment is not supported. "
+        "Ensure you have at least Windows Vista or newer, and are "
+        "using either Visual Studio 2013 or newer or MinGW-W64.")
     endif()
 else ()
     # Unconditionally declare the following feature test macros.  These are
@@ -480,9 +480,9 @@ endif()
 add_subdirectory (src)
 
 if (NNG_TESTS)
-	enable_testing()
-	set(all_tests, "")
-	add_subdirectory (tests)
+    enable_testing()
+    set(all_tests, "")
+    add_subdirectory (tests)
     add_subdirectory (perf)
 endif()
 
@@ -503,7 +503,7 @@ set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "nanomsg next generation library")
 set (CPACK_SOURCE_GENERATOR "TBZ2;TGZ;ZIP")
 set (CPACK_SOURCE_IGNORE_FILES "/build/;/.git/;~$;${CPACK_SOURCE_IGNORE_FILES}")
 set (CPACK_SOURCE_PACKAGE_FILE_NAME
-	"${PROJECT_NAME}-${NNG_PACKAGE_VERSION}-src")
+    "${PROJECT_NAME}-${NNG_PACKAGE_VERSION}-src")
 set (CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt)
 set (CPACK_PACKAGE_INSTALL_DIRECTORY "nng")
 set (CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${NNG_PACKAGE_VERSION}")
