@@ -9,12 +9,18 @@
 #
 
 if (NNG_SUPP_TLS)
-    set(NNG_SUPP_TLS_MBEDTLS ON)
+    # schannel is default on windows, unless said otherwise
+    if (NNG_PLATFORM_WINDOWS AND NOT NNG_SUPP_TLS_MBEDTLS)
+        set(NNG_SUPP_TLS_SCHANNEL ON)
+    else()
+        set(NNG_SUPP_TLS_MBEDTLS ON)
+    endif()
     set(TLS_DEFINES -DNNG_SUPP_TLS)
 endif()
+
 set(TLS_SOURCES supplemental/tls/tls.h)
 
-# For now we only support the ARM mbedTLS library.
+# We support the ARM mbedTLS library.
 if (NNG_SUPP_TLS_MBEDTLS)
 
     Find_Package(mbedTLS REQUIRED)
@@ -34,6 +40,9 @@ if (NNG_SUPP_TLS_MBEDTLS)
         set(NNG_REQUIRED_INCLUDES ${NNG_REQUIRED_INCLUDES} PARENT_SCOPE)
     endif()
     set(TLS_SOURCES ${TLS_SOURCES} supplemental/tls/mbedtls/tls.c)
+# we can also use schannel. headers are part of SDK.
+elseif (NNG_SUPP_TLS_SCHANNEL)
+    set(TLS_SOURCES ${TLS_SOURCES} supplemental/tls/schannel/tls.c)
 else()
     set(TLS_SOURCES ${TLS_SOURCES} supplemental/tls/none/tls.c)
 endif()
