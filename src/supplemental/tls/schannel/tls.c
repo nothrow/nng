@@ -47,6 +47,7 @@
 #endif
 
 typedef enum schannel_internal_error_codes {
+	SCHANNEL_OUT_OF_MEMORY	   = -6,
 	SCHANNEL_OTHER_ERROR       = -5,
 	SCHANNEL_SECURITY_ERROR    = -4,
 	SCHANNEL_WRITE_PENDING     = -2,
@@ -269,6 +270,27 @@ nni_tls_fini(nni_tls *tp)
 		nni_tls_config_fini(tp->cfg);
 	}
 	NNI_FREE_STRUCT(tp);
+}
+
+static int nni_tls_mkerr2(schannel_internal_error_codes ec)
+{
+	switch (ec)
+	{
+	case SCHANNEL_OUT_OF_MEMORY:
+		return NNG_ENOMEM;
+	case SCHANNEL_OTHER_ERROR:
+		return NNG_EINVAL;
+	case SCHANNEL_SECURITY_ERROR:
+		return NNG_EPEERAUTH;
+	case SCHANNEL_WRITE_PENDING: 
+	case SCHANNEL_READ_PENDING: 
+	case SCHANNEL_OK:
+		return 0;
+
+	case SCHANNEL_CONNECTION_CLOSED:
+		return NNG_ECLOSED;
+	}
+	return NNG_EINTERNAL;
 }
 
 static int
@@ -657,7 +679,7 @@ nni_tls_do_handshake(nni_tls *tp)
 		if (FAILED(QueryContextAttributesA(&tp->ssl_context,
 		        SECPKG_ATTR_STREAM_SIZES, &tp->stream_sizes))) {
 
-			nni_tls_fail(tp, NNG_ESYSERR);
+			nni_tls_fail(tp, NNG_EINVAL);
 			return;
 		}
 
@@ -667,7 +689,7 @@ nni_tls_do_handshake(nni_tls *tp)
 	default:
 		// some other error occurred, this causes us to tear it
 		// down
-		nni_tls_fail(tp, NNG_ESYSERR);
+		nni_tls_fail(tp, nni_tls_mkerr2(rv));
 	}
 }
 
@@ -715,7 +737,7 @@ nni_tls_do_send(nni_tls *tp)
 		// Want better diagnostics.
 		nni_aio_list_remove(aio);
 		if (n < 0) {
-			nni_aio_finish_error(aio, NNG_ESYSERR);
+			nni_aio_finish_error(aio, nni_tls_mkerr2(n));
 		} else {
 			nni_aio_finish(aio, 0, n);
 		}
@@ -1146,7 +1168,7 @@ schannel_client_create_credentials(nng_tls_config *cfg)
 	schannel_cred.dwFlags   = SCH_CRED_NO_DEFAULT_CREDS |
 	    SCH_CRED_NO_SYSTEM_MAPPER | SCH_CRED_REVOCATION_CHECK_CHAIN;
 
-	// enforce at least tls1_2
+	// enforce at leastls1_2
 	schannel_cred.grbitEnabledProtocols =
 	    SP_PROT_TLS1_2 | SP_PROT_TLS1_3 | SP_PROT_TLS1_3PLUS;
 
@@ -1306,7 +1328,7 @@ schannel_ssl_write(nni_tls *tp, void *buffer, size_t len)
 	    tp->stream_sizes.cbHeader + tp->stream_sizes.cbTrailer + len);
 
 	if (data == NULL) {
-		return (SCHANNEL_OTHER_ERROR);
+		return (SCHANNEL_OUT_OF_MEMORY);
 	}
 
 	memcpy(data + tp->stream_sizes.cbHeader, buffer, len);
@@ -1364,7 +1386,7 @@ schannel_ssl_read(nni_tls *tp, void *buffer, size_t len)
 	unsigned char *read_buffer = nni_alloc(len);
 
 	if (read_buffer == NULL)
-		return (SCHANNEL_OTHER_ERROR);
+		return (SCHANNEL_OUT_OF_MEMORY);
 
 	readed = nni_tls_net_recv(tp, read_buffer, len);
 	if (readed < 0)
