@@ -18,6 +18,8 @@
 
 // todo:
 // server support
+// close connection support
+// renegotiation support (necessary?)
 // certificates
 // validation of certificates to be turned off
 // extra_data in TLS buffers
@@ -57,7 +59,7 @@
 #endif
 
 typedef enum schannel_internal_error_codes {
-	SCHANNEL_OUT_OF_MEMORY	   = -6,
+	SCHANNEL_OUT_OF_MEMORY     = -6,
 	SCHANNEL_OTHER_ERROR       = -5,
 	SCHANNEL_SECURITY_ERROR    = -4,
 	SCHANNEL_WRITE_PENDING     = -2,
@@ -282,25 +284,25 @@ nni_tls_fini(nni_tls *tp)
 	NNI_FREE_STRUCT(tp);
 }
 
-static int nni_tls_mkerr2(schannel_internal_error_codes ec)
+static int
+nni_tls_mkerr2(schannel_internal_error_codes ec)
 {
-	switch (ec)
-	{
+	switch (ec) {
 	case SCHANNEL_OUT_OF_MEMORY:
-		return NNG_ENOMEM;
+		return (NNG_ENOMEM);
 	case SCHANNEL_OTHER_ERROR:
-		return NNG_EINVAL;
+		return (NNG_EINVAL);
 	case SCHANNEL_SECURITY_ERROR:
-		return NNG_EPEERAUTH;
-	case SCHANNEL_WRITE_PENDING: 
-	case SCHANNEL_READ_PENDING: 
+		return (NNG_EPEERAUTH);
+	case SCHANNEL_WRITE_PENDING:
+	case SCHANNEL_READ_PENDING:
 	case SCHANNEL_OK:
-		return 0;
+		return (0);
 
 	case SCHANNEL_CONNECTION_CLOSED:
-		return NNG_ECLOSED;
+		return (NNG_ECLOSED);
 	}
-	return NNG_EINTERNAL;
+	return (NNG_EINTERNAL);
 }
 
 static int
@@ -543,13 +545,13 @@ nni_tls_net_send(nni_tls *tp, const unsigned char *buf, size_t len)
 	// as we are running in that context.
 
 	if (tp->sending) {
-		return SCHANNEL_WRITE_PENDING;
+		return (SCHANNEL_WRITE_PENDING);
 	}
 	if (tp->tcp_closed) {
-		return SCHANNEL_CONNECTION_CLOSED;
+		return (SCHANNEL_CONNECTION_CLOSED);
 	}
 
-	tp->sending = 1;
+	tp->sending = true;
 	tp->sendlen = len;
 	tp->sendoff = 0;
 	memcpy(tp->sendbuf, buf, len);
@@ -558,20 +560,22 @@ nni_tls_net_send(nni_tls *tp, const unsigned char *buf, size_t len)
 	nni_aio_set_iov(tp->tcp_send, 1, &iov);
 	nni_aio_set_timeout(tp->tcp_send, NNG_DURATION_INFINITE);
 	nni_tcp_conn_send(tp->tcp, tp->tcp_send);
-	return SCHANNEL_OK;
+	return (SCHANNEL_OK);
 }
 
+// receive data to given buffer, with given length
+// returns either number of bytes copied, or error (negative numbers)
 static schannel_internal_error_codes
 nni_tls_net_recv(nni_tls *tp, unsigned char *buf, size_t len)
 {
 	// We should already be running with the pipe lock held,
 	// as we are running in that context.
 	if (tp->tcp_closed && tp->recvlen == 0) {
-		return SCHANNEL_CONNECTION_CLOSED;
+		return (SCHANNEL_CONNECTION_CLOSED);
 	}
 
 	if (tp->recvlen == 0) {
-		return SCHANNEL_READ_PENDING;
+		return (SCHANNEL_READ_PENDING);
 	} else {
 		if (len > tp->recvlen) {
 			len = tp->recvlen;
@@ -660,10 +664,24 @@ nni_tls_set_keepalive(nni_tls *tp, bool val)
 	return (nni_tcp_conn_set_keepalive(tp->tcp, val));
 }
 
+// fills information about buffer sizes, creates extra_data buffer, ...
+static int
+nni_tls_fill_context(nni_tls *tp)
+{
+	if (FAILED(QueryContextAttributesA(&tp->ssl_context,
+	        SECPKG_ATTR_STREAM_SIZES, &tp->stream_sizes))) {
+
+		return (NNG_EINVAL);
+	}
+
+	return (0);
+}
+
 static void
 nni_tls_do_handshake(nni_tls *tp)
 {
 	int rv = -1;
+	int ret;
 
 	if (tp->tls_closed) {
 		return;
@@ -675,7 +693,6 @@ nni_tls_do_handshake(nni_tls *tp)
 		NNI_ASSERT(0);
 	}
 
-	//	rv = mbedtls_ssl_handshake(&tp->ctx);
 	switch (rv) {
 	case SCHANNEL_WRITE_PENDING:
 	case SCHANNEL_READ_PENDING:
@@ -685,11 +702,8 @@ nni_tls_do_handshake(nni_tls *tp)
 	case 0:
 		// The handshake is done, yay!
 
-		// fill info about buffers.
-		if (FAILED(QueryContextAttributesA(&tp->ssl_context,
-		        SECPKG_ATTR_STREAM_SIZES, &tp->stream_sizes))) {
-
-			nni_tls_fail(tp, NNG_EINVAL);
+		if ((ret = nni_tls_fill_context(tp)) != 0) {
+			nni_tls_fail(tp, ret);
 			return;
 		}
 
@@ -841,35 +855,35 @@ nni_tls_conninfo_protocol(DWORD protocol)
 	switch (protocol) {
 	case SP_PROT_TLS1_CLIENT:
 	case SP_PROT_TLS1_SERVER:
-		return "TLS1.0";
+		return ("TLS1.0");
 
 	case SP_PROT_TLS1_1_CLIENT:
 	case SP_PROT_TLS1_1_SERVER:
-		return "TLS1.1";
+		return ("TLS1.1");
 
 	case SP_PROT_TLS1_2_CLIENT:
 	case SP_PROT_TLS1_2_SERVER:
-		return "TLS1.2";
+		return ("TLS1.2");
 
 	case SP_PROT_TLS1_3_CLIENT:
 	case SP_PROT_TLS1_3_SERVER:
-		return "TLS1.3";
+		return ("TLS1.3");
 
 	case SP_PROT_SSL3_CLIENT:
 	case SP_PROT_SSL3_SERVER:
-		return "SSL3";
+		return ("SSL3");
 
 	case SP_PROT_PCT1_CLIENT:
 	case SP_PROT_PCT1_SERVER:
-		return "PCT";
+		return ("PCT");
 
 	case SP_PROT_SSL2_CLIENT:
 	case SP_PROT_SSL2_SERVER:
-		return "SSL2";
+		return ("SSL2");
 
 	default:
 		snprintf(unknown_buffer, 16, "p: 0x%lu", protocol);
-		return unknown_buffer;
+		return (unknown_buffer);
 	}
 }
 
@@ -879,32 +893,27 @@ nni_tls_conninfo_cipher(DWORD cipher)
 	static char unknown_buffer[16]; // not thread safe. who cares.
 	switch (cipher) {
 	case CALG_RC4:
-		return "RC4";
-
+		return ("RC4");
 	case CALG_3DES:
-		return "TripeDES";
+		return ("TripleDES");
 	case CALG_AES_128:
-		return "AES128";
+		return ("AES128");
 	case CALG_AES_192:
-		return "AES192";
+		return ("AES192");
 	case CALG_AES_256:
-		return "AES256";
+		return ("AES256");
 	case CALG_AES:
-		return "AES";
-
+		return ("AES");
 	case CALG_RC2:
-		return "RC2";
-
+		return ("RC2");
 	case CALG_DES:
 	case CALG_CYLINK_MEK:
-		return "DES";
-
+		return ("DES");
 	case CALG_SKIPJACK:
-		return "Skipjack";
-
+		return ("Skipjack");
 	default:
 		snprintf(unknown_buffer, 16, "c: 0x%lu", cipher);
-		return unknown_buffer;
+		return (unknown_buffer);
 	}
 }
 
@@ -914,18 +923,17 @@ nni_tls_conninfo_hash(DWORD hash)
 	static char unknown_buffer[16]; // not thread safe. who cares.
 	switch (hash) {
 	case CALG_MD5:
-		return "MD5";
-
+		return ("MD5");
 	case CALG_SHA:
-		return "SHA";
+		return ("SHA");
 	case CALG_SHA_256:
-		return "SHA256";
+		return ("SHA256");
 	case CALG_SHA_512:
-		return "SHA512";
+		return ("SHA512");
 
 	default:
 		snprintf(unknown_buffer, 16, "h: 0x%lu", hash);
-		return unknown_buffer;
+		return (unknown_buffer);
 	}
 }
 
@@ -939,7 +947,7 @@ nni_tls_ciphersuite_name(nni_tls *tp)
 	    &tp->ssl_context, SECPKG_ATTR_CONNECTION_INFO, (PVOID) &ci);
 
 	if (FAILED(ss)) {
-		return "?";
+		return ("?");
 	}
 
 	snprintf(tp->ciphersuite_name_buffer,
@@ -948,13 +956,13 @@ nni_tls_ciphersuite_name(nni_tls *tp)
 	    nni_tls_conninfo_cipher(ci.aiCipher),
 	    nni_tls_conninfo_hash(ci.aiHash));
 
-	return tp->ciphersuite_name_buffer;
+	return (tp->ciphersuite_name_buffer);
 }
 
 bool
 nni_tls_verified(nni_tls *tp)
 {
-	return true; // todo: how to get this?
+	return (true); // todo: how to get this? what does it even mean?
 	             //	return (mbedtls_ssl_get_verify_result(&tp->ctx)
 	             //== 0);
 }
@@ -985,12 +993,7 @@ nng_tls_config_auth_mode(nng_tls_config *cfg, nng_tls_auth_mode mode)
 		nni_mtx_unlock(&cfg->lk);
 		return (NNG_ESTATE);
 	}
-	switch (mode) {
-		// todo: how to support modes?
-	default:
-		nni_mtx_unlock(&cfg->lk);
-		return (NNG_EINVAL);
-	}
+	cfg->mode = mode;
 	nni_mtx_unlock(&cfg->lk);
 	return (0);
 }
@@ -1182,6 +1185,7 @@ schannel_client_create_credentials(nng_tls_config *cfg)
 	schannel_cred.grbitEnabledProtocols =
 	    SP_PROT_TLS1_2 | SP_PROT_TLS1_3 | SP_PROT_TLS1_3PLUS;
 
+	// create anonymous credentials
 	ss = AcquireCredentialsHandleA(NULL, (LPSTR) UNISP_NAME_A,
 	    SECPKG_CRED_OUTBOUND, NULL, &schannel_cred, NULL, NULL,
 	    &cfg->credentials, &expires);
@@ -1191,7 +1195,7 @@ schannel_client_create_credentials(nng_tls_config *cfg)
 		return (nni_tls_mkerr(ss));
 	}
 
-	return 0;
+	return (0);
 }
 
 static SECURITY_STATUS
@@ -1202,7 +1206,6 @@ schannel_client_handshake(nni_tls *tp)
 	SecBufferDesc   out_buffer;
 	DWORD           out_flags;
 	TimeStamp       expires;
-	int             rv;
 
 	out_buffer.ulVersion = SECBUFFER_VERSION;
 	out_buffer.cBuffers  = 1;
@@ -1222,12 +1225,21 @@ schannel_client_handshake(nni_tls *tp)
 		return (ss);
 	}
 
+	// we have more data to send for handshake
 	if (out_buffers[0].cbBuffer > 0 && out_buffers[0].pvBuffer != NULL) {
 
 		if (nni_tls_net_send(tp, out_buffers[0].pvBuffer,
 		        out_buffers[0].cbBuffer) < 0) {
 			FreeContextBuffer(out_buffers[0].pvBuffer);
-			return (NNG_ETRANERR);
+
+			// only reason this net_send can fail is closing of the
+			// underlying stream. unless we have handshake
+			// completed (hsdone bit set), noone else can feed us
+			// data
+
+			// we don't have stream closed error, this is as close
+			// as we can get
+			return (SEC_E_NO_CONTEXT);
 		}
 
 		FreeContextBuffer(out_buffers[0].pvBuffer);
@@ -1250,7 +1262,7 @@ schannel_client_handshake_cb(nni_tls *tp)
 	buffer_len = nni_tls_net_recv(tp, buffer, NNG_TLS_MAX_BUFFER_SIZE);
 
 	if (buffer_len < 0) {
-		return buffer_len;
+		return (buffer_len);
 	}
 
 	// Set up the input buffers. Buffer 0 is used to pass in data
@@ -1303,8 +1315,9 @@ schannel_client_handshake_cb(nni_tls *tp)
 	// If InitializeSecurityContext returned
 	// SEC_E_INCOMPLETE_MESSAGE, then we need to read more data
 	// from the server and try again.
-	if (ss == SEC_E_INCOMPLETE_MESSAGE)
+	if (ss == SEC_E_INCOMPLETE_MESSAGE) {
 		return (SCHANNEL_READ_PENDING);
+	}
 
 	if (ss == SEC_E_OK) {
 		// If the "extra" buffer contains data, this is
@@ -1334,6 +1347,7 @@ schannel_ssl_write(nni_tls *tp, void *buffer, size_t len)
 	SecBufferDesc   msg;
 	SecBuffer       buffers[4];
 
+	// stackalloc?
 	unsigned char *data = nni_alloc(
 	    tp->stream_sizes.cbHeader + tp->stream_sizes.cbTrailer + len);
 
@@ -1392,15 +1406,19 @@ schannel_ssl_read(nni_tls *tp, void *buffer, size_t len)
 	// EncryptMessage requires 4 buffers. [0] and [2] does not need
 	// any initialization.
 
-	int            readed;
+	int readed;
+	// stackalloc?
 	unsigned char *read_buffer = nni_alloc(len);
 
-	if (read_buffer == NULL)
+	if (read_buffer == NULL) {
 		return (SCHANNEL_OUT_OF_MEMORY);
+	}
 
 	readed = nni_tls_net_recv(tp, read_buffer, len);
-	if (readed < 0)
-		return readed;
+	if (readed < 0) {
+		nni_free(read_buffer, len);
+		return (readed);
+	}
 
 	buffers[0].pvBuffer   = read_buffer;
 	buffers[0].cbBuffer   = readed;
@@ -1425,7 +1443,9 @@ schannel_ssl_read(nni_tls *tp, void *buffer, size_t len)
 	for (int i = 0; i < 4; i++) {
 		if (buffers[i].BufferType == SECBUFFER_DATA) {
 			dataBuffer = &buffers[i];
-			break;
+		}
+		if (buffers[i].BufferType == SECBUFFER_EXTRA) {
+			NNI_ASSERT(0 && "to be implemented");
 		}
 	}
 
