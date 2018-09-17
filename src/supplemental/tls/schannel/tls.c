@@ -16,6 +16,16 @@
 
 #include "core/nng_impl.h"
 
+// todo:
+// server support
+// certificates
+// validation of certificates to be turned off
+// extra_data in TLS buffers
+// no static linking against schannel (win7 issues)
+// possibility to fallback to mbedtls, if compiled in?
+// clang-format
+// sha1 from windows api
+
 #include "supplemental/tls/tls.h"
 #include "supplemental/tls/tls_api.h"
 
