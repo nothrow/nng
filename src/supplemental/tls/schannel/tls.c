@@ -18,7 +18,6 @@
 
 // todo:
 // server support
-// close connection support
 // renegotiation support (necessary?)
 // certificates
 // validation of certificates to be turned off
@@ -114,9 +113,10 @@ struct nng_tls_config {
 
 	int refcnt; // servers increment the reference
 
-	nni_list     certkeys;
-	nng_tls_mode mode;
-	CredHandle   credentials;
+	nni_list          certkeys;
+	nng_tls_mode      mode;
+	nng_tls_auth_mode auth_mode;
+	CredHandle        credentials;
 };
 
 static void nni_tls_send_cb(void *);
@@ -133,6 +133,7 @@ static schannel_internal_error_codes nni_tls_net_send(
 static schannel_internal_error_codes nni_tls_net_recv(
     nni_tls *, unsigned char *, size_t);
 
+static int             schannel_close_connection(nni_tls *tp);
 static int             schannel_client_create_credentials(nng_tls_config *cfg);
 static SECURITY_STATUS schannel_client_handshake(nni_tls *tp);
 static schannel_internal_error_codes schannel_client_handshake_cb(nni_tls *tp);
@@ -273,7 +274,11 @@ nni_tls_fini(nni_tls *tp)
 	}
 	nni_aio_fini(tp->tcp_send);
 	nni_aio_fini(tp->tcp_recv);
-	// mbedtls_ssl_free(&tp->ctx);
+
+	if (SEC_VALID(tp->ssl_context)) {
+		DeleteSecurityContext(&tp->ssl_context);
+	}
+
 	nni_mtx_fini(&tp->lk);
 	nni_free(tp->recvbuf, NNG_TLS_MAX_BUFFER_SIZE);
 	nni_free(tp->sendbuf, NNG_TLS_MAX_BUFFER_SIZE);
@@ -308,7 +313,11 @@ nni_tls_mkerr2(schannel_internal_error_codes ec)
 static int
 nni_tls_mkerr(SECURITY_STATUS ss)
 {
-	return (NNG_ECRYPTO);
+	if (ss == SEC_E_SECPKG_NOT_FOUND) {
+		return (NNG_ENOTSUP);
+	} else {
+		return (NNG_ECRYPTO);
+	}
 }
 
 int
@@ -528,7 +537,7 @@ nni_tls_recv_cb(void *ctx)
 // This handles the bottom half send (i.e. sending over TCP).
 // We always accept a chunk of data, to a limit, if the bottom
 // sender is not busy.  Then we handle that in the background.
-// If the sender *is* busy, we return MBEDTLS_ERR_SSL_WANT_WRITE.
+// If the sender *is* busy, we return SCHANNEL_WRITE_PENDING.
 // The chunk size we accept is 64k at a time, which prevents
 // ridiculous over queueing.  This is always called with the pipe
 // lock held, and never blocks.
@@ -819,9 +828,6 @@ nni_tls_close(nni_tls *tp)
 {
 	nni_aio *aio;
 
-	nni_aio_close(tp->tcp_send);
-	nni_aio_close(tp->tcp_recv);
-
 	nni_mtx_lock(&tp->lk);
 	tp->tls_closed = true;
 
@@ -839,12 +845,17 @@ nni_tls_close(nni_tls *tp)
 		// This may succeed, or it may fail.  Either way we
 		// don't care. Implementations that depend on
 		// close-notify to mean anything are broken by design,
-		// just like RFC.  Note that we do *NOT* close the TCP
-		// connection at this point.
-		//		(void) mbedtls_ssl_close_notify(&tp->ctx);
+		// just like RFC.
+		(void) schannel_close_connection(tp);
+
+		nni_tcp_conn_close(tp->tcp);
 	} else {
 		nni_tcp_conn_close(tp->tcp);
 	}
+
+	nni_aio_close(tp->tcp_send);
+	nni_aio_close(tp->tcp_recv);
+
 	nni_mtx_unlock(&tp->lk);
 }
 
@@ -963,8 +974,8 @@ bool
 nni_tls_verified(nni_tls *tp)
 {
 	return (true); // todo: how to get this? what does it even mean?
-	             //	return (mbedtls_ssl_get_verify_result(&tp->ctx)
-	             //== 0);
+	               //	return (mbedtls_ssl_get_verify_result(&tp->ctx)
+	               //== 0);
 }
 
 int
@@ -993,7 +1004,7 @@ nng_tls_config_auth_mode(nng_tls_config *cfg, nng_tls_auth_mode mode)
 		nni_mtx_unlock(&cfg->lk);
 		return (NNG_ESTATE);
 	}
-	cfg->mode = mode;
+	cfg->auth_mode = mode;
 	nni_mtx_unlock(&cfg->lk);
 	return (0);
 }
@@ -1175,11 +1186,18 @@ schannel_client_create_credentials(nng_tls_config *cfg)
 {
 	SCHANNEL_CRED   schannel_cred = { 0 };
 	SECURITY_STATUS ss;
-	TimeStamp       expires;
 
 	schannel_cred.dwVersion = SCHANNEL_CRED_VERSION;
-	schannel_cred.dwFlags   = SCH_CRED_NO_DEFAULT_CREDS |
-	    SCH_CRED_NO_SYSTEM_MAPPER | SCH_CRED_REVOCATION_CHECK_CHAIN;
+	schannel_cred.dwFlags =
+	    SCH_CRED_NO_DEFAULT_CREDS | SCH_USE_STRONG_CRYPTO;
+
+	if (cfg->auth_mode == NNG_TLS_AUTH_MODE_NONE)
+		schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION |
+		    SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
+		    SCH_CRED_IGNORE_REVOCATION_OFFLINE;
+	else
+		schannel_cred.dwFlags |= SCH_CRED_AUTO_CRED_VALIDATION |
+		    SCH_CRED_REVOCATION_CHECK_CHAIN;
 
 	// enforce at leastls1_2
 	schannel_cred.grbitEnabledProtocols =
@@ -1188,7 +1206,7 @@ schannel_client_create_credentials(nng_tls_config *cfg)
 	// create anonymous credentials
 	ss = AcquireCredentialsHandleA(NULL, (LPSTR) UNISP_NAME_A,
 	    SECPKG_CRED_OUTBOUND, NULL, &schannel_cred, NULL, NULL,
-	    &cfg->credentials, &expires);
+	    &cfg->credentials, NULL);
 
 	// todo: check expiration?
 	if (FAILED(ss)) {
@@ -1434,6 +1452,16 @@ schannel_ssl_read(nni_tls *tp, void *buffer, size_t len)
 
 	ss = DecryptMessage(&tp->ssl_context, &msg, 0, NULL);
 
+	// we do not support renegotiation. If this happens, close the
+	// connection, and let the application reopen it. (this is valid
+	// approach, not a hack!) we can also restart the handshake, but I am
+	// having troubles with testing that.
+	if (ss == SEC_I_RENEGOTIATE) {
+		nni_tls_fini(tp);
+		nni_free(read_buffer, len);
+		return (SCHANNEL_CONNECTION_CLOSED);
+	}
+
 	if (FAILED(ss)) {
 		nni_free(read_buffer, len);
 		return (SCHANNEL_SECURITY_ERROR);
@@ -1458,4 +1486,56 @@ schannel_ssl_read(nni_tls *tp, void *buffer, size_t len)
 
 	nni_free(read_buffer, len);
 	return (dataBuffer->cbBuffer);
+}
+
+static int
+schannel_close_connection(nni_tls *tp)
+{
+	SecBufferDesc   out_buffer;
+	SecBuffer       out_buffers[1];
+	DWORD           msg;
+	DWORD           out_flags;
+	SECURITY_STATUS ss;
+
+	msg = SCHANNEL_SHUTDOWN;
+
+	out_buffers[0].BufferType = SECBUFFER_TOKEN;
+	out_buffers[0].pvBuffer   = &msg;
+	out_buffers[0].cbBuffer   = sizeof(msg);
+
+	out_buffer.ulVersion = SECBUFFER_VERSION;
+	out_buffer.cBuffers  = 1;
+	out_buffer.pBuffers  = out_buffers;
+
+	if (FAILED(ss = ApplyControlToken(&tp->ssl_context, &out_buffer))) {
+		return nni_tls_mkerr(ss);
+	}
+
+	out_buffers[0].BufferType = SECBUFFER_TOKEN;
+	out_buffers[0].pvBuffer   = NULL;
+	out_buffers[0].cbBuffer   = 0;
+
+	out_buffer.ulVersion = SECBUFFER_VERSION;
+	out_buffer.cBuffers  = 1;
+	out_buffer.pBuffers  = out_buffers;
+
+	ss = InitializeSecurityContextA(&tp->cfg->credentials,
+	    &tp->ssl_context, NULL, SSPI_FLAGS, 0, SECURITY_NATIVE_DREP, NULL,
+	    0, &tp->ssl_context, &out_buffer, &out_flags, NULL);
+
+	if (FAILED(ss)) {
+		return nni_tls_mkerr(ss);
+	}
+
+	if (out_buffers[0].pvBuffer != NULL && out_buffers[0].cbBuffer != 0) {
+		if (nni_tls_net_send(tp, out_buffers[0].pvBuffer,
+		        out_buffers[0].cbBuffer) < 0) {
+			FreeContextBuffer(out_buffers[0].pvBuffer);
+			return (SEC_E_NO_CONTEXT);
+		}
+
+		FreeContextBuffer(out_buffers[0].pvBuffer);
+	}
+
+	return (0);
 }
